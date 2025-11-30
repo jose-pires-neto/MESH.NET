@@ -24,7 +24,10 @@ class SignalingService {
         this.peersRef.on('child_added', (snapshot) => {
             const peerId = snapshot.key;
             if (peerId !== this.myId) {
-                this.onPeerFound(peerId, true); // true = initiator (if I'm newer, or simple rule)
+                // Deterministic initiator: The peer with the "larger" ID initiates.
+                // This prevents race conditions (glare) where both try to connect to each other.
+                const shouldInitiate = this.myId > peerId;
+                this.onPeerFound(peerId, shouldInitiate);
             }
         });
 
