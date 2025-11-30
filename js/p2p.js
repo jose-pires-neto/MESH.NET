@@ -64,12 +64,16 @@ class P2PManager {
     }
 
     sendProfileUpdate(peerId, profileData) {
+        this.sendDirect(peerId, {
+            type: 'profile-update',
+            payload: profileData
+        });
+    }
+
+    sendDirect(peerId, data) {
         const p = this.peers[peerId];
         if (p && p.connected) {
-            p.send(JSON.stringify({
-                type: 'profile-update',
-                payload: profileData
-            }));
+            p.send(JSON.stringify(data));
         }
     }
 

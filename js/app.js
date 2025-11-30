@@ -203,6 +203,15 @@ async function initApp(username) {
                 avatar: myAvatar,
                 bio: myBio
             });
+
+            // Sync: Send my posts to the new peer
+            console.log(`[App] Syncing ${posts.length} posts to ${peerId}`);
+            posts.forEach(post => {
+                p2pManager.sendDirect(peerId, {
+                    type: 'post',
+                    payload: post
+                });
+            });
         },
         (peerId) => {
             // On Peer Disconnect
