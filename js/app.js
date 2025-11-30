@@ -78,6 +78,19 @@ function formatTime(timestamp) {
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+// Helper: Calculate Votes
+function calculateVotes(post) {
+    let upvotes = 0;
+    let downvotes = 0;
+    if (post.votes) {
+        Object.values(post.votes).forEach(v => {
+            if (v === 1) upvotes++;
+            if (v === -1) downvotes++;
+        });
+    }
+    return { upvotes, downvotes };
+}
+
 // Logic: Handle Vote
 function handleVote(postId, value) {
     const post = posts.find(p => p.id === postId);
@@ -90,22 +103,34 @@ function handleVote(postId, value) {
     // Toggle vote if clicking same button
     if (previousVote === value) {
         delete post.votes[myId];
-        post.score -= value;
     } else {
         post.votes[myId] = value;
-        post.score += (value - previousVote);
     }
 
+    // Recalculate counts
+    const { upvotes, downvotes } = calculateVotes(post);
+    post.upvotes = upvotes;
+    post.downvotes = downvotes;
+    post.score = upvotes - downvotes; // Keep score for sorting
+
     // Update UI
-    const scoreEl = document.getElementById(`score-${postId}`);
-    if (scoreEl) scoreEl.textContent = post.score;
+    const upEl = document.getElementById(`upvotes-${postId}`);
+    const downEl = document.getElementById(`downvotes-${postId}`);
+    if (upEl) upEl.textContent = post.upvotes;
+    if (downEl) downEl.textContent = post.downvotes;
 
     // Update button styles
     const upBtn = document.querySelector(`.upvote-btn[data-id="${postId}"]`);
     const downBtn = document.querySelector(`.downvote-btn[data-id="${postId}"]`);
 
-    if (upBtn) upBtn.classList.toggle('text-orange-500', post.votes[myId] === 1);
-    if (downBtn) downBtn.classList.toggle('text-blue-500', post.votes[myId] === -1);
+    if (upBtn) {
+        upBtn.classList.toggle('text-orange-500', post.votes[myId] === 1);
+        upBtn.classList.toggle('text-mono-400', post.votes[myId] !== 1);
+    }
+    if (downBtn) {
+        downBtn.classList.toggle('text-blue-500', post.votes[myId] === -1);
+        downBtn.classList.toggle('text-mono-400', post.votes[myId] !== -1);
+    }
 
     storageService.savePost(post);
 
@@ -115,8 +140,7 @@ function handleVote(postId, value) {
         payload: {
             postId: postId,
             userId: myId,
-            value: post.votes[myId] || 0, // 0 means removed vote
-            newScore: post.score
+            value: post.votes[myId] || 0
         }
     });
 }
@@ -135,7 +159,14 @@ function renderPost(post) {
 
     // Ensure votes initialized
     if (!post.votes) post.votes = {};
-    if (typeof post.score !== 'number') post.score = 0;
+
+    // Calculate initial counts if missing
+    if (typeof post.upvotes !== 'number' || typeof post.downvotes !== 'number') {
+        const counts = calculateVotes(post);
+        post.upvotes = counts.upvotes;
+        post.downvotes = counts.downvotes;
+        post.score = counts.upvotes - counts.downvotes;
+    }
 
     const myVote = post.votes[myId] || 0;
 
@@ -149,10 +180,12 @@ function renderPost(post) {
             <button class="p-1 rounded hover:bg-mono-200 transition-colors upvote-btn ${myVote === 1 ? 'text-orange-500' : 'text-mono-400'}" data-id="${post.id}">
                 <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 4l-8 8h6v8h4v-8h6z"/></svg>
             </button>
-            <span class="font-bold text-mono-700 text-sm" id="score-${post.id}">${post.score}</span>
+            <span class="font-bold text-mono-700 text-sm" id="upvotes-${post.id}">${post.upvotes || 0}</span>
+            
             <button class="p-1 rounded hover:bg-mono-200 transition-colors downvote-btn ${myVote === -1 ? 'text-blue-500' : 'text-mono-400'}" data-id="${post.id}">
                 <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 20l8-8h-6v-8h-4v8h-6z"/></svg>
             </button>
+            <span class="font-bold text-mono-700 text-sm" id="downvotes-${post.id}">${post.downvotes || 0}</span>
         </div>
         <div class="flex-1">
             <div class="flex items-center space-x-2">
@@ -344,7 +377,7 @@ async function initApp(username) {
                 peerProfiles[peerId] = data.payload;
                 updatePeerList();
             } else if (data.type === 'vote') {
-                const { postId, userId, value, newScore } = data.payload;
+                const { postId, userId, value } = data.payload;
                 const post = posts.find(p => p.id === postId);
                 if (post) {
                     if (!post.votes) post.votes = {};
@@ -355,15 +388,19 @@ async function initApp(username) {
                         post.votes[userId] = value;
                     }
 
-                    // Optimistically use the broadcaster's score or recalculate? 
-                    // Let's trust the broadcaster's score for now to avoid desync
-                    post.score = newScore;
+                    // Recalculate
+                    const { upvotes, downvotes } = calculateVotes(post);
+                    post.upvotes = upvotes;
+                    post.downvotes = downvotes;
+                    post.score = upvotes - downvotes;
 
                     storageService.savePost(post);
 
                     // Update UI
-                    const scoreEl = document.getElementById(`score-${postId}`);
-                    if (scoreEl) scoreEl.textContent = post.score;
+                    const upEl = document.getElementById(`upvotes-${postId}`);
+                    const downEl = document.getElementById(`downvotes-${postId}`);
+                    if (upEl) upEl.textContent = post.upvotes;
+                    if (downEl) downEl.textContent = post.downvotes;
                 }
             }
         },
