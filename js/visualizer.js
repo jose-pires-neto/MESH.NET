@@ -1,14 +1,33 @@
 class NetworkVisualizer {
-    constructor(canvasId) {
+    constructor(canvasId, onClick) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         this.nodes = []; // { id, x, y, vx, vy }
         this.connections = []; // [nodeId1, nodeId2]
+        this.onClick = onClick;
 
         this.resize();
         window.addEventListener('resize', () => this.resize());
+        this.canvas.addEventListener('click', (e) => this.handleClick(e));
 
         this.animate();
+    }
+
+    handleClick(e) {
+        if (!this.onClick) return;
+
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // Check if clicked on a node
+        for (const node of this.nodes) {
+            const dist = Math.sqrt((x - node.x) ** 2 + (y - node.y) ** 2);
+            if (dist < 10) { // 10px radius hit area
+                this.onClick(node.id);
+                return;
+            }
+        }
     }
 
     resize() {
