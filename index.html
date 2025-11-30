@@ -351,6 +351,52 @@
         </div>
     </div>
 
+    <!-- Thread View Modal -->
+    <div id="thread-modal"
+        class="fixed inset-0 z-50 bg-white hidden flex flex-col h-[100dvh] transition-all duration-300">
+        <!-- Header -->
+        <div class="flex-none flex items-center p-4 border-b border-mono-200 bg-white/80 backdrop-blur-md z-10">
+            <button id="close-thread-btn" class="mr-4 p-2 hover:bg-mono-100 rounded-full transition-colors">
+                <svg class="w-6 h-6 text-mono-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+            </button>
+            <h2 class="text-xl font-bold">Thread</h2>
+        </div>
+
+        <!-- Thread Content -->
+        <div class="flex-1 overflow-y-auto min-h-0 bg-white scroll-smooth" id="thread-container">
+            <!-- Parent Post -->
+            <div id="thread-parent-post" class="border-b border-mono-200"></div>
+
+            <!-- Replies -->
+            <div id="thread-replies" class="pb-24">
+                <!-- Replies injected here -->
+            </div>
+        </div>
+
+        <!-- Reply Input -->
+        <div class="flex-none border-t border-mono-200 p-4 bg-white z-20">
+            <div class="max-w-4xl mx-auto flex items-start space-x-3">
+                <div class="w-10 h-10 rounded-full bg-mono-200 flex-shrink-0 overflow-hidden" id="thread-user-avatar">
+                    <!-- Avatar injected -->
+                </div>
+                <div class="flex-1">
+                    <textarea id="thread-reply-input" rows="2"
+                        class="w-full bg-mono-50 border-none rounded-xl p-3 focus:ring-2 focus:ring-mono-900 resize-none"
+                        placeholder="Post your reply..."></textarea>
+                    <div class="flex justify-end mt-2">
+                        <button id="thread-reply-btn"
+                            class="bg-mono-900 text-white px-4 py-2 rounded-full font-bold text-sm hover:bg-mono-800 transition-all disabled:opacity-50">
+                            Reply
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- App Scripts -->
     <script src="js/config.js"></script>
     <script src="js/storage.js"></script>

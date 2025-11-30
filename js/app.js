@@ -63,6 +63,18 @@ const peerModalId = document.getElementById('peer-modal-id');
 const peerModalBio = document.getElementById('peer-modal-bio');
 const peerModalPosts = document.getElementById('peer-modal-posts');
 
+// Thread Modal Elements
+const threadModal = document.getElementById('thread-modal');
+const closeThreadBtn = document.getElementById('close-thread-btn');
+const threadContainer = document.getElementById('thread-container');
+const threadParentPost = document.getElementById('thread-parent-post');
+const threadReplies = document.getElementById('thread-replies');
+const threadReplyInput = document.getElementById('thread-reply-input');
+const threadReplyBtn = document.getElementById('thread-reply-btn');
+const threadUserAvatar = document.getElementById('thread-user-avatar');
+
+let currentThreadId = null;
+
 // Helper: Generate random ID
 function generateId() {
     return Math.random().toString(36).substr(2, 9);
@@ -113,13 +125,19 @@ function handleVote(postId, value) {
     post.downvotes = downvotes;
     post.score = upvotes - downvotes; // Keep score for sorting
 
-    // Update UI
+    // Update UI (Feed)
     const upEl = document.getElementById(`upvotes-${postId}`);
     const downEl = document.getElementById(`downvotes-${postId}`);
     if (upEl) upEl.textContent = post.upvotes;
     if (downEl) downEl.textContent = post.downvotes;
 
-    // Update button styles
+    // Update UI (Thread View - Parent Post)
+    const threadUpEl = document.getElementById(`thread-upvotes-${postId}`);
+    const threadDownEl = document.getElementById(`thread-downvotes-${postId}`);
+    if (threadUpEl) threadUpEl.textContent = post.upvotes;
+    if (threadDownEl) threadDownEl.textContent = post.downvotes;
+
+    // Update button styles (Feed)
     const upBtn = document.querySelector(`.upvote-btn[data-id="${postId}"]`);
     const downBtn = document.querySelector(`.downvote-btn[data-id="${postId}"]`);
 
@@ -130,6 +148,19 @@ function handleVote(postId, value) {
     if (downBtn) {
         downBtn.classList.toggle('text-blue-500', post.votes[myId] === -1);
         downBtn.classList.toggle('text-mono-400', post.votes[myId] !== -1);
+    }
+
+    // Update button styles (Thread View)
+    const threadUpBtn = document.getElementById(`thread-upvote-${postId}`);
+    const threadDownBtn = document.getElementById(`thread-downvote-${postId}`);
+
+    if (threadUpBtn) {
+        threadUpBtn.classList.toggle('text-orange-500', post.votes[myId] === 1);
+        threadUpBtn.classList.toggle('text-mono-400', post.votes[myId] !== 1);
+    }
+    if (threadDownBtn) {
+        threadDownBtn.classList.toggle('text-blue-500', post.votes[myId] === -1);
+        threadDownBtn.classList.toggle('text-mono-400', post.votes[myId] !== -1);
     }
 
     storageService.savePost(post);
@@ -187,7 +218,7 @@ function renderPost(post) {
             </button>
             <span class="font-bold text-mono-700 text-sm" id="downvotes-${post.id}">${post.downvotes || 0}</span>
         </div>
-        <div class="flex-1">
+        <div class="flex-1 cursor-pointer post-content-area" data-id="${post.id}">
             <div class="flex items-center space-x-2">
                 <div class="flex-shrink-0">
                     ${avatarHtml}
@@ -198,7 +229,18 @@ function renderPost(post) {
                 </div>
             </div>
             <p class="mt-2 text-mono-800 text-lg leading-relaxed">${post.content}</p>
-            ${post.image ? `<div class="mt-3"><img src="${post.image}" class="rounded-lg max-h-96 w-auto border border-mono-200 object-cover"></div>` : ''}
+            ${post.image ? `<div class="mt-3"><img src="${post.image}" class="rounded-lg max-h-64 md:max-h-96 w-full object-cover border border-mono-200"></div>` : ''}
+            
+            <!-- Action Bar -->
+            <div class="mt-3 flex items-center justify-between text-mono-500">
+                <div class="flex items-center space-x-4">
+                    <button class="flex items-center space-x-1 hover:bg-mono-100 p-2 rounded-full transition-colors reply-btn" data-id="${post.id}">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                        <span class="text-sm font-medium" id="reply-count-${post.id}">${post.replyCount || 0}</span>
+                        <span class="text-sm font-medium hidden md:inline">Comments</span>
+                    </button>
+                </div>
+            </div>
         </div>
     `;
 
@@ -206,8 +248,24 @@ function renderPost(post) {
     const upBtn = postEl.querySelector('.upvote-btn');
     const downBtn = postEl.querySelector('.downvote-btn');
 
-    upBtn.onclick = () => handleVote(post.id, 1);
-    downBtn.onclick = () => handleVote(post.id, -1);
+    upBtn.onclick = (e) => { e.stopPropagation(); handleVote(post.id, 1); };
+    downBtn.onclick = (e) => { e.stopPropagation(); handleVote(post.id, -1); };
+
+    // Thread Click Handler
+    const contentArea = postEl.querySelector('.post-content-area');
+    contentArea.onclick = (e) => {
+        // Prevent opening thread if clicking a button inside content area (if any)
+        if (e.target.closest('button')) return;
+        openThread(post);
+    };
+
+    const replyBtn = postEl.querySelector('.reply-btn');
+    replyBtn.onclick = (e) => {
+        e.stopPropagation();
+        openThread(post);
+        // Focus reply input
+        setTimeout(() => threadReplyInput.focus(), 300);
+    };
 
     if (isNew) {
         // Prepend to feed (sort logic handled separately or simple prepend)
@@ -334,7 +392,9 @@ async function initApp(username) {
     cachedPosts.forEach(post => {
         if (!posts.find(p => p.id === post.id)) {
             posts.push(post);
-            renderPost(post);
+            if (!post.parentId) {
+                renderPost(post);
+            }
         }
     });
 
@@ -369,7 +429,24 @@ async function initApp(username) {
             if (data.type === 'post') {
                 if (!posts.find(p => p.id === data.payload.id)) {
                     posts.push(data.payload);
-                    renderPost(data.payload);
+                    if (!data.payload.parentId) {
+                        renderPost(data.payload);
+                    } else {
+                        // If it's a reply, update the parent's reply count
+                        const parentPost = posts.find(p => p.id === data.payload.parentId);
+                        if (parentPost) {
+                            parentPost.replyCount = (parentPost.replyCount || 0) + 1;
+                            // Update UI for reply count
+                            const replyCountEl = document.getElementById(`reply-count-${parentPost.id}`);
+                            if (replyCountEl) replyCountEl.textContent = parentPost.replyCount;
+                            storageService.savePost(parentPost);
+                        }
+
+                        // If we are viewing the thread, render the reply
+                        if (currentThreadId === data.payload.parentId) {
+                            renderThreadReply(data.payload);
+                        }
+                    }
                     storageService.savePost(data.payload);
                 }
             } else if (data.type === 'profile-update') {
@@ -396,11 +473,17 @@ async function initApp(username) {
 
                     storageService.savePost(post);
 
-                    // Update UI
+                    // Update UI (Feed)
                     const upEl = document.getElementById(`upvotes-${postId}`);
                     const downEl = document.getElementById(`downvotes-${postId}`);
                     if (upEl) upEl.textContent = post.upvotes;
                     if (downEl) downEl.textContent = post.downvotes;
+
+                    // Update UI (Thread View)
+                    const threadUpEl = document.getElementById(`thread-upvotes-${postId}`);
+                    const threadDownEl = document.getElementById(`thread-downvotes-${postId}`);
+                    if (threadUpEl) threadUpEl.textContent = post.upvotes;
+                    if (threadDownEl) threadDownEl.textContent = post.downvotes;
                 }
             }
         },
@@ -499,8 +582,10 @@ submitPostBtn.addEventListener('click', async () => {
         image: currentImageBase64,
         avatar: myAvatar,
         timestamp: Date.now(),
+        timestamp: Date.now(),
         score: 0,
-        votes: {}
+        votes: {},
+        replyCount: 0
     };
 
     posts.push(post);
@@ -598,6 +683,172 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
         console.error("Error restoring session:", err);
     }
+});
+
+// Thread Logic
+function openThread(post) {
+    currentThreadId = post.id;
+    threadModal.classList.remove('hidden');
+
+    // Render Parent
+    threadParentPost.innerHTML = '';
+    // Clone logic or re-render? Re-rendering is safer to get fresh state
+    // We can reuse renderPost logic but append to a different container? 
+    // Or just manually build HTML for parent to look slightly different (bigger?)
+    // Let's reuse renderPost but we need to modify it to accept a container.
+    // For now, let's just manually render the parent to keep it simple and customizable.
+
+    const avatarHtml = post.avatar
+        ? `<img src="${post.avatar}" class="w-12 h-12 rounded-full object-cover border border-mono-200">`
+        : `<div class="w-12 h-12 rounded-full bg-mono-200 flex items-center justify-center text-mono-600 font-bold text-lg">${getInitials(post.username)}</div>`;
+
+    const myVote = (post.votes && post.votes[myId]) || 0;
+
+    threadParentPost.innerHTML = `
+        <div class="p-6">
+            <div class="flex items-center space-x-3 mb-4">
+                ${avatarHtml}
+                <div>
+                    <h3 class="font-bold text-mono-900 text-lg">${post.username}</h3>
+                    <span class="text-mono-500">@${post.userId.substr(0, 6)}</span>
+                </div>
+            </div>
+            <p class="text-xl text-mono-900 leading-relaxed mb-4">${post.content}</p>
+            ${post.image ? `<div class="mb-4 flex justify-center bg-mono-50 rounded-xl overflow-hidden"><img src="${post.image}" class="max-h-[50vh] w-auto object-contain"></div>` : ''}
+            <div class="text-sm text-mono-400 border-b border-mono-100 pb-4 mb-4">
+                ${new Date(post.timestamp).toLocaleString()}
+            </div>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-6">
+                    <div class="flex items-center space-x-2">
+                        <button id="thread-upvote-${post.id}" class="p-2 rounded-full hover:bg-mono-100 transition-colors ${myVote === 1 ? 'text-orange-500' : 'text-mono-400'}">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 4l-8 8h6v8h4v-8h6z"/></svg>
+                        </button>
+                        <span class="font-bold text-mono-900 text-lg" id="thread-upvotes-${post.id}">${post.upvotes || 0}</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button id="thread-downvote-${post.id}" class="p-2 rounded-full hover:bg-mono-100 transition-colors ${myVote === -1 ? 'text-blue-500' : 'text-mono-400'}">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 20l8-8h-6v-8h-4v8h-6z"/></svg>
+                        </button>
+                        <span class="font-bold text-mono-900 text-lg" id="thread-downvotes-${post.id}">${post.downvotes || 0}</span>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2 text-mono-500">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                    <span class="font-medium">${post.replyCount || 0} Comments</span>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Attach listeners for parent post in thread
+    document.getElementById(`thread-upvote-${post.id}`).onclick = () => handleVote(post.id, 1);
+    document.getElementById(`thread-downvote-${post.id}`).onclick = () => handleVote(post.id, -1);
+
+    // Render Replies
+    threadReplies.innerHTML = '';
+    const replies = posts.filter(p => p.parentId === post.id).sort((a, b) => a.timestamp - b.timestamp);
+    replies.forEach(reply => renderThreadReply(reply));
+
+    // Setup Reply Input Avatar
+    if (myAvatar) {
+        threadUserAvatar.innerHTML = `<img src="${myAvatar}" class="w-full h-full object-cover">`;
+    } else {
+        threadUserAvatar.textContent = getInitials(myUsername);
+    }
+}
+
+function renderThreadReply(reply) {
+    const el = document.createElement('div');
+    el.className = 'p-6 border-b border-mono-100 flex space-x-4';
+
+    const avatarHtml = reply.avatar
+        ? `<img src="${reply.avatar}" class="w-10 h-10 rounded-full object-cover border border-mono-200">`
+        : `<div class="w-10 h-10 rounded-full bg-mono-200 flex items-center justify-center text-mono-600 font-bold">${getInitials(reply.username)}</div>`;
+
+    const myVote = (reply.votes && reply.votes[myId]) || 0;
+
+    el.innerHTML = `
+        <div class="flex flex-col items-center space-y-1 pt-1">
+            <button class="p-1 rounded hover:bg-mono-200 transition-colors upvote-btn ${myVote === 1 ? 'text-orange-500' : 'text-mono-400'}" data-id="${reply.id}">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 4l-8 8h6v8h4v-8h6z"/></svg>
+            </button>
+            <span class="font-bold text-mono-700 text-xs" id="upvotes-${reply.id}">${reply.upvotes || 0}</span>
+            
+            <button class="p-1 rounded hover:bg-mono-200 transition-colors downvote-btn ${myVote === -1 ? 'text-blue-500' : 'text-mono-400'}" data-id="${reply.id}">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 20l8-8h-6v-8h-4v8h-6z"/></svg>
+            </button>
+            <span class="font-bold text-mono-700 text-xs" id="downvotes-${reply.id}">${reply.downvotes || 0}</span>
+        </div>
+        <div class="flex-1">
+            <div class="flex items-center space-x-2">
+                <div class="flex-shrink-0">${avatarHtml}</div>
+                <div>
+                    <span class="font-bold text-mono-900 text-sm">${reply.username}</span>
+                    <span class="text-xs text-mono-400">@${reply.userId.substr(0, 6)} · ${formatTime(reply.timestamp)}</span>
+                </div>
+            </div>
+            <p class="mt-1 text-mono-800 leading-relaxed">${reply.content}</p>
+        </div>
+    `;
+
+    // Attach vote listeners for reply
+    const upBtn = el.querySelector('.upvote-btn');
+    const downBtn = el.querySelector('.downvote-btn');
+    upBtn.onclick = () => handleVote(reply.id, 1);
+    downBtn.onclick = () => handleVote(reply.id, -1);
+
+    threadReplies.appendChild(el);
+}
+
+closeThreadBtn.addEventListener('click', () => {
+    threadModal.classList.add('hidden');
+    currentThreadId = null;
+});
+
+threadReplyBtn.addEventListener('click', () => {
+    const content = threadReplyInput.value.trim();
+    if (!content) return;
+
+    const reply = {
+        id: generateId(),
+        userId: myId,
+        username: myUsername,
+        content: content,
+        avatar: myAvatar,
+        timestamp: Date.now(),
+        parentId: currentThreadId,
+        upvotes: 0,
+        downvotes: 0,
+        votes: {},
+        replyCount: 0
+    };
+
+    posts.push(reply);
+    renderThreadReply(reply);
+    storageService.savePost(reply);
+
+    // Update parent post reply count
+    const parentPost = posts.find(p => p.id === currentThreadId);
+    if (parentPost) {
+        parentPost.replyCount = (parentPost.replyCount || 0) + 1;
+        storageService.savePost(parentPost);
+
+        // Update UI in thread view if visible (it is)
+        // We might want to update the parent post UI in the thread view to show new count?
+        // But we just added the reply to the list, so the count is implicit.
+        // However, we should update the "X Comments" text in the parent post header if we added it.
+        // For now, let's just update the feed UI counter.
+        const replyCountEl = document.getElementById(`reply-count-${parentPost.id}`);
+        if (replyCountEl) replyCountEl.textContent = parentPost.replyCount;
+    }
+
+    p2pManager.broadcast({
+        type: 'post',
+        payload: reply
+    });
+
+    threadReplyInput.value = '';
 });
 
 // Old Post Btn Listener Removed
